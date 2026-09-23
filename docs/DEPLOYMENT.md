@@ -24,10 +24,14 @@
 
 暂不提供删房、同房重开、角色踢换、自动清理、账户恢复、语音或推送。服务器当前最多读取/处理100个进行中房间，建房也限制100个待开局房间；达到限制需管理员维护，不代表已实测支持100房并发。最近房间从最新200条筛选，展示至多30条，长期产品应换成成员表和分页查询。不能直接加worker扩容：需先实现房间归属、跨进程通知、调度去重与限流。
 
-首次发布前：用真实PostgreSQL迁移与备份恢复；测试真人+API模型的5/7/10人完整局；测试锁屏、飞行模式、重复点击、退出和服务重启；检查日志无秘密；评估模型是否仍被聊天诱导（视角隔离不能保证策略抗注入）；完成费用监控和平台隐私/内容审核要求。
+CI已验证PostgreSQL 18迁移、事务和应用重启恢复。首次发布前仍需在用户服务器验证备份恢复；测试真人+API模型的5/7/10人完整局；测试锁屏、飞行模式、重复点击、退出和服务重启；检查日志无秘密；评估模型是否仍被聊天诱导（视角隔离不能保证策略抗注入）；完成费用监控和平台隐私/内容审核要求。
 
 ## 手机安装包
 
 `mobile/eas.json` 的development用于开发，preview用于内部独立APK/Ad Hoc，production用于商店发行构建。Expo账号、项目绑定、Android签名和Apple签名由仓库所有者控制，不写入源码。iOS Ad Hoc设备必须登记；TestFlight走Apple流程。本次不替用户创建付费账号、触发付费构建或声称已通过商店审核。
 
 来源：[Expo独立内部分发](https://docs.expo.dev/build/internal-distribution/)、[Expo开发构建](https://docs.expo.dev/develop/development-builds/introduction/)。
+
+## GitHub Android 内测 APK
+
+`.github/workflows/android-preview.yml` 不使用EAS账号，直接在GitHub的Android环境中prebuild并编译ARM64 release变体，随后把APK、当次实际依赖锁文件和SHA256清单作为artifact保存14天。该包沿用模板公开测试签名；只用于受控内测，不作为商店发行版。正式上架和长期升级需要所有者自己的稳定私钥签名。源码修改后的工作流结果及产物均应重新检查，生成APK不等于真机对局验收。

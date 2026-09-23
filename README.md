@@ -2,7 +2,7 @@
 
 面向 Android / iOS 的 React Native + Expo 客户端，连接自建 FastAPI 服务器。不是浏览器页面，也不是 WebView 套壳。支持 5–10 人、真人 / 规则机器人 / API 大模型混合参赛，房主也可仅观战。
 
-**当前交付是可继续构建和验收的源码 MVP，不是已签名的 APK/IPA，也未部署到你的服务器。** 后端本地测试 65 项通过；手机协议纯函数 8 项通过，10 个 TS/TSX 文件语法转译通过。本环境 npm DNS 失败，完整依赖类型检查、原生编译和真机测试尚未完成。详见 [验证记录](docs/VALIDATION.md)。
+**当前交付是邀请制内测源码 MVP，尚未部署到你的服务器。** 后端 66 项测试（含 PostgreSQL 18 迁移和重启恢复）、手机完整 TypeScript 检查、8 项 Jest 测试、Expo 依赖校验及 Android/iOS JavaScript bundle 导出已在 GitHub CI 通过。[已通过的 CI](https://github.com/zzjw0611/AvalonGame/actions/runs/35841427887)。原生安装包、实际设备和真实模型服务是另行验收项，详见 [验证记录](docs/VALIDATION.md)。
 
 ## 改造来源与范围
 
@@ -75,6 +75,8 @@ npx eas-cli@latest build --platform android --profile preview
 
 开发构建：`npx eas-cli@latest build --platform android --profile development`，安装后运行 `npm start`。本机有 Android SDK 时也可 `npm run android`。iOS 使用相应 `--platform ios` 构建，Ad Hoc 需要登记设备；TestFlight 使用 production 构建与 Apple 开发者签名流程。Windows 不提供本地 iOS 模拟器。
 
+另有 `.github/workflows/android-preview.yml`：在 GitHub 构建独立 ARM64 Android 内测 APK。它使用 Expo 模板的公开测试签名，仅用于受控试用，不是正式发行签名；构建结果从对应 Actions 的 `avalon-android-arm64-internal` artifact 获取。该包不含服务器或模型秘密，需要连接你部署好的 HTTPS 游戏服务器。正式分发前必须改用自己保管的签名密钥。
+
 安装包只接受 HTTPS 游戏服务器地址。开发模式可允许 HTTP；真机不要把 `localhost` 当成你的服务器地址。`EXPO_PUBLIC_API_URL` 仅用于可选预填游戏服务器地址，**绝不能放大模型 API Key**。
 
 ## 项目结构
@@ -92,6 +94,6 @@ compose.yaml / Caddyfile   服务器部署
 
 ## 尚未完成的发布验收
 
-真实模型服务联调与成本测量、PostgreSQL 实机并发/恢复测试、完整手机 CI、Android/iOS 原生编译、签名安装包和真机体验验收。当前实现用于邀请制小规模内测，不宣称生产级、绝对抗注入或高并发容量。账户找回、推送、语音、自动清理/删房、同房重开和应用商店隐私合规页面不在本次 MVP 范围。
+真实模型服务联调与成本测量、用户服务器部署、数据库备份恢复和并发压测、iOS 原生编译及正式签名、手机真机体验验收。Android 内测包使用独立工作流构建，状态以该工作流实际结果为准；JavaScript 打包成功不等于原生验收。当前实现用于邀请制小规模内测，不宣称生产级、绝对抗注入或高并发容量。账户找回、推送、语音、自动清理/删房、同房重开和应用商店隐私合规页面不在本次 MVP 范围。
 
 软件使用 Apache-2.0；保留 [NOTICE](NOTICE)。这是非官方玩家项目，未包含官方美术，软件许可不等于获得游戏商标或素材授权。
