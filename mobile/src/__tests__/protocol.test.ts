@@ -1,3 +1,4 @@
+import { expect, test } from '@jest/globals';
 import { eventText, isNewer, normalizeBaseUrl } from '../protocol';
 import { Room } from '../types';
 
