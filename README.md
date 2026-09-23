@@ -2,7 +2,11 @@
 
 面向 Android / iOS 的 React Native + Expo 客户端，连接自建 FastAPI 服务器。不是浏览器页面，也不是 WebView 套壳。支持 5–10 人、真人 / 规则机器人 / API 大模型混合参赛，房主也可仅观战。
 
-**当前交付是邀请制内测源码 MVP，尚未部署到你的服务器。** 后端 66 项测试（含 PostgreSQL 18 迁移和重启恢复）、手机完整 TypeScript 检查、8 项 Jest 测试、Expo 依赖校验及 Android/iOS JavaScript bundle 导出已在 GitHub CI 通过。[已通过的 CI](https://github.com/zzjw0611/AvalonGame/actions/runs/35841427887)。原生安装包、实际设备和真实模型服务是另行验收项，详见 [验证记录](docs/VALIDATION.md)。
+**当前交付是邀请制内测源码 MVP + 已成功构建的 Android ARM64 测试 APK，尚未部署到你的服务器。** 后端 **79 项测试**（含 PostgreSQL 18 迁移和重启恢复）、手机完整 TypeScript 检查、**8 项 Jest 测试**、Expo 依赖校验及 Android/iOS JavaScript bundle 导出已在 [GitHub CI](https://github.com/zzjw0611/AvalonGame/actions/runs/35843523599) 通过。[Android 原生构建](https://github.com/zzjw0611/AvalonGame/actions/runs/35840675433) 也已成功，APK 已取回并核对 SHA-256；但尚未做真机完整对局、iOS 原生构建或真实模型联调。详见 [验证记录](docs/VALIDATION.md)。
+
+[查看 PR #1](https://github.com/zzjw0611/AvalonGame/pull/1) · [下载 Android 内测 artifact](https://github.com/zzjw0611/AvalonGame/actions/runs/35840675433/artifacts/10741951607) · [安装与校验说明](docs/ANDROID_INTERNAL.md)
+
+源码位于 `feat/native-mobile-mvp` 分支，PR 未自动合并到 `main`。Android artifact 当前保留到 2026-10-07，可能需要登录 GitHub 下载；它不是永久发布地址。解压后安装 `avalon-arm64-internal.apk`，仅供 ARM64 Android 内测，使用公开测试签名，正式分发必须换成自己保管的签名。
 
 ## 改造来源与范围
 
@@ -17,8 +21,16 @@
 - 服务器权威状态机；秘密票收齐后公布；各席独立视角；同请求重试幂等，不能修改已交密票。
 - SQLite 本地 / PostgreSQL 部署、Alembic 迁移、持久化会话与房间；后台恢复、WebSocket 重连、HTTP 快照补偿。
 - 服务端模型配置、八角色与分阶段中文 Prompt、严格动作菜单、最多两次模型请求、调用预算与规则兜底，结束后展示使用统计。
+- AI 授权上下文包含本局公开角色数量、完整结构化提案/结算历史（含被否决提案），与发言共享事件编号；任务编号明确从 1 开始，玩家文本不进入受信指令。
 
 **规则边界：** 仅经典顺序任务，不实现湖中仙女、Targeting、Big Box、超十人或无梅林局。顺序发言、最终全员陈述和超时自动行动是公开的 APP 协议，不冒充官方规定。[规则规格](docs/RULES.md)
+
+## 获取源码
+
+```bash
+git clone --branch feat/native-mobile-mvp https://github.com/zzjw0611/AvalonGame.git
+cd AvalonGame
+```
 
 ## 本地运行后端
 
@@ -62,7 +74,7 @@ docker compose exec -T db pg_dump -U avalon -d avalon > avalon-backup.sql
 
 ```bash
 cd mobile
-npm install
+npm ci
 npm run typecheck
 npm test
 npm run check:expo
@@ -71,7 +83,7 @@ npx eas-cli@latest build:configure
 npx eas-cli@latest build --platform android --profile preview
 ```
 
-`preview` 生成独立 Android APK，不依赖 Metro 开发服务器。需登录你自己的 Expo 账号并配置签名；本仓库不含账号、项目 ID 或私钥。首次成功安装后保留并提交生成的 `package-lock.json`；本次环境无法从 npm 解析完整依赖，所以没有伪造锁文件。CI 会保留生成的锁文件供检查。
+`preview` 生成独立 Android APK，不依赖 Metro 开发服务器。需登录你自己的 Expo 账号并配置签名；本仓库不含账号、项目 ID 或私钥。`mobile/package-lock.json` 已从成功 Android 构建的实际 artifact 导入并校验，版本清单一致且 `npm ci` 检查通过；不是手写锁文件。锁文件导入完成后，一次性导入工作流已移除，正常 CI 仅有只读权限并使用 `npm ci`。
 
 开发构建：`npx eas-cli@latest build --platform android --profile development`，安装后运行 `npm start`。本机有 Android SDK 时也可 `npm run android`。iOS 使用相应 `--platform ios` 构建，Ad Hoc 需要登记设备；TestFlight 使用 production 构建与 Apple 开发者签名流程。Windows 不提供本地 iOS 模拟器。
 
@@ -89,11 +101,12 @@ backend/app/storage.py     数据存储与事务
 backend/tests/             规则、接口、整局机器人、迁移和模型 Mock 测试
 mobile/app/                原生页面（Expo Router）
 mobile/src/                协议、凭证、重连、界面与类型
+mobile/package-lock.json  与成功 Android 构建一致的依赖锁
 compose.yaml / Caddyfile   服务器部署
 ```
 
 ## 尚未完成的发布验收
 
-真实模型服务联调与成本测量、用户服务器部署、数据库备份恢复和并发压测、iOS 原生编译及正式签名、手机真机体验验收。Android 内测包使用独立工作流构建，状态以该工作流实际结果为准；JavaScript 打包成功不等于原生验收。当前实现用于邀请制小规模内测，不宣称生产级、绝对抗注入或高并发容量。账户找回、推送、语音、自动清理/删房、同房重开和应用商店隐私合规页面不在本次 MVP 范围。
+真实模型服务联调与成本测量、用户服务器部署、数据库备份恢复和并发压测、iOS 原生编译及正式签名、手机真机体验验收。Android APK 构建成功和哈希一致不等于真机游戏验收。当前实现用于邀请制小规模内测，不宣称生产级、绝对抗注入或高并发容量。账户找回、推送、语音、自动清理/删房、同房重开和应用商店隐私合规页面不在本次 MVP 范围。
 
 软件使用 Apache-2.0；保留 [NOTICE](NOTICE)。这是非官方玩家项目，未包含官方美术，软件许可不等于获得游戏商标或素材授权。
