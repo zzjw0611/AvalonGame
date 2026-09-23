@@ -14,6 +14,7 @@ import json
 import random
 import time
 import uuid
+from collections import Counter
 from typing import Any
 
 PRESETS = {
@@ -143,6 +144,9 @@ def observe(g: dict, seat: int | None) -> dict:
     public['phase_name'] = PHASE_NAMES[g['phase']]
     public['quest_sizes'] = list(PRESETS[g['n']][1])
     public['fail_thresholds'] = list(PRESETS[g['n']][2])
+    # The deck composition is public setup information, NOT a seat-to-role map.
+    # Derive it from the room configuration rather than the shuffled identity array.
+    public['role_counts'] = dict(sorted(Counter(role_deck(g['n'], g['config']['optional_roles'])).items()))
     public['speaker'] = g['order'][g['speaker_index']] if g['phase'] in {'DISCUSS', 'FINAL_DISCUSS'} else None
     # Only public changes and this seat's own receipt change the version.
     public['view_version'] = g['epoch'] * 2 + int(own_submitted)
