@@ -1,0 +1,68 @@
+name: Import validated mobile lock
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feat/native-mobile-mvp']
+    paths: ['.github/workflows/import-validated-lock.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  import-lock:
+    if: github.repository == 'zzjw0611/AvalonGame'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/native-mobile-mvp
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: avalon-android-arm64-internal
+          run-id: 35840675433
+          github-token: ${{ github.token }}
+          path: .validated-artifact
+      - name: Verify original build lock and declared dependencies
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib, shutil
+          lock = pathlib.Path('.validated-artifact/package-lock.json')
+          expected = '6b1b6296fa42b6ebdff2150e5a912a5e73aea2909d44f25b4df7b6faadc44886'
+          if hashlib.sha256(lock.read_bytes()).hexdigest() != expected:
+              raise SystemExit('Downloaded lock digest does not match the verified artifact')
+          root = json.loads(lock.read_text())['packages']['']
+          package = json.loads(pathlib.Path('mobile/package.json').read_text())
+          for section in ('dependencies', 'devDependencies'):
+              if root.get(section, {}) != package.get(section, {}):
+                  raise SystemExit('Package manifest changed since native build; do not import this lock')
+          shutil.copyfile(lock, 'mobile/package-lock.json')
+          PY
+      - name: Verify clean lockfile install
+        working-directory: mobile
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run check:expo
+      - name: Commit only the verified dependency lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- mobile/package-lock.json && git ls-files --error-unmatch mobile/package-lock.json >/dev/null 2>&1; then
+            echo 'The verified lock is already present.'
+            exit 0
+          fi
+          gh auth setup-git
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- mobile/package-lock.json
+          git commit -m 'build: pin mobile dependencies to the validated Android build'
+          git push origin HEAD:refs/heads/feat/native-mobile-mvp
+          git rev-parse HEAD
