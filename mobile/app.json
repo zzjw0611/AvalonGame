@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "阿瓦隆 · 圆桌密议",
+    "slug": "avalon-native",
+    "scheme": "avalon",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "platforms": ["android", "ios"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zzjw0611.avalongame",
+      "infoPlist": {"ITSAppUsesNonExemptEncryption": false}
+    },
+    "android": {"package": "com.zzjw0611.avalongame", "versionCode": 1},
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {"typedRoutes": true}
+  }
+}

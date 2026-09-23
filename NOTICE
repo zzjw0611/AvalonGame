@@ -1,0 +1,20 @@
+AvalonGame native mobile adaptation
+
+Selected configuration and phase mechanics adapted from:
+xqbjs/AvalonGame
+https://github.com/xqbjs/AvalonGame
+Revision: c46f1d923930484ede6dbf0d44e6f3e3889b0afa
+Source file: games/games/avalon/engine.py
+Upstream attribution: Copyright (c) 2026 MinkunXue and FaLi.
+Upstream license: Apache License 2.0 (included in LICENSE).
+The upstream README acknowledges ModelScope AgentEvolver.
+
+Modified files prominently identify the adaptation. The authoritative transitions,
+player views, transport, storage, prompts, tests and native mobile interface have
+been reworked for this project; this is NOT a verbatim fork of the whole upstream.
+No upstream artwork, training datasets, model weights or credential files are included.
+No code from the unlicensed Avalon-LLM or LLM-Game-Agent repositories is included.
+
+The Resistance: Avalon was designed by Don Eskridge and published by Indie Boards
+& Cards. This is an unofficial fan implementation, not an endorsement or grant
+of rights to game artwork or trademarks. Software licensing does not grant those rights.
