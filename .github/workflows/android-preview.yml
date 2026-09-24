@@ -42,13 +42,13 @@ jobs:
       - name: Collect artifact
         run: |
           mkdir -p internal-artifact
-          cp android/app/build/outputs/apk/release/app-release.apk internal-artifact/avalon-arm64-internal.apk
+          cp android/app/build/outputs/apk/release/app-release.apk internal-artifact/man姐想玩阿瓦隆.apk
           cp package-lock.json internal-artifact/package-lock.json
-          printf '%s\n' 'INTERNAL EVALUATION ONLY. ARM64 Android. Expo template test/debug signing key, NOT a private release signature. Connect to your HTTPS game server; no model credentials are bundled. Rebuild with owner-controlled signing before distribution.' > internal-artifact/README.txt
-          sha256sum internal-artifact/avalon-arm64-internal.apk > internal-artifact/SHA256SUMS.txt
+          printf '%s\n' 'INTERNAL EVALUATION ONLY. man姐想玩阿瓦隆 0.2.1, ARM64 Android. Expo template test/debug signing key, NOT a private release signature. Connect to your HTTPS game server; no model credentials are bundled. Rebuild with owner-controlled signing before distribution.' > internal-artifact/README.txt
+          sha256sum internal-artifact/man姐想玩阿瓦隆.apk > internal-artifact/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: avalon-android-arm64-internal
+          name: man-avalon-0.2.1-android-arm64-internal
           path: mobile/internal-artifact/
           if-no-files-found: error
           retention-days: 14
