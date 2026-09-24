@@ -10,9 +10,9 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 PARTS = ROOT / "assets" / "icon-source"
 TARGET = ROOT / "assets" / "icon.png"
-EXPECTED_SHA256 = "cf4fe07f1f2a2249c52a748abb4ecf7d6db4f38dbb7cdd38592abe419fba334e"
+EXPECTED_SHA256 = "5a9e2e442d4dec6e36f998c522643cefe2801d7998e271286343f213c25383e8"
 
-encoded = "".join(path.read_text(encoding="ascii").strip() for path in sorted(PARTS.glob("*.b64")))
+encoded = "".join((PARTS / name).read_text(encoding="ascii").strip() for name in ("00.b64", "01.b64"))
 raw = base64.b64decode(encoded, validate=True)
 
 actual = hashlib.sha256(raw).hexdigest()
@@ -21,7 +21,7 @@ if actual != EXPECTED_SHA256:
 
 with Image.open(BytesIO(raw)) as image:
     image.load()
-    if image.size != (128, 128) or image.format != "JPEG":
+    if image.size != (64, 64) or image.format != "JPEG":
         raise SystemExit(f"Unexpected app icon source: {image.format} {image.size}")
     image = image.convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
     image.save(TARGET, format="PNG", optimize=False, compress_level=6)
