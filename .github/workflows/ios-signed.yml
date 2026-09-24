@@ -2,6 +2,10 @@ name: iOS signed IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['feat/native-mobile-mvp']
+    paths:
+      - '.github/ios-sign-trigger'
 
 permissions:
   contents: read
