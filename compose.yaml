@@ -33,12 +33,13 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
-      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      PUBLIC_HOST: ${PUBLIC_HOST:-42.193.181.239}
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERT_DIR:-./certs}:/etc/caddy/certs:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

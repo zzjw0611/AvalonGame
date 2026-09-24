@@ -26,10 +26,13 @@ def test_postgres_migration_transaction_and_restart(monkeypatch):
         response = first.post('/api/rooms', headers=headers, json={
             'num_players': 7, 'host_plays': False,
             'optional_roles': ['PERCIVAL', 'MORGANA', 'OBERON'],
-            'seats': [{'kind': 'bot'} for _ in range(7)],
+            'seats': [{'kind': 'human'} for _ in range(7)],
         })
         assert response.status_code == 201, response.text
         code = response.json()['code']
+        for i in range(7):
+            player = first.post('/api/sessions', json={'name': f'PG player {i}'}).json()
+            assert first.post(f'/api/rooms/{code}/join', headers={'Authorization': 'Bearer ' + player['token']}, json={}).status_code == 200
         started = first.post(f'/api/rooms/{code}/start', headers=headers)
         assert started.status_code == 200
         runtime = first.app.state.runtime

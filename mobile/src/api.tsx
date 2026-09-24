@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Identity } from './types';
-import { normalizeBaseUrl } from './protocol';
+import { restoreIdentity, SERVER_URL } from './config';
 
 const SESSION_KEY = 'avalon.session.v1';
 export const PENDING_KEY = 'avalon.pending.v1';
@@ -27,13 +27,13 @@ export async function request<T>(base: string, token: string | null, path: strin
     return data as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError('连接失败或超时，请检查网络和服务器地址', 0);
+    throw new ApiError('连接失败或超时，请检查网络后重试', 0);
   } finally { clearTimeout(timer); }
 }
 
 type SessionContextValue = {
   identity: Identity | null; ready: boolean;
-  login: (base: string, name: string, accessCode: string) => Promise<void>;
+  login: (name: string, accessCode: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -46,16 +46,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       try {
         const raw = await SecureStore.getItemAsync(SESSION_KEY);
         if (raw && active) {
-          const saved = JSON.parse(raw) as Identity;
-          if (saved.token && saved.id && saved.baseUrl) setIdentity(saved);
+          const saved = restoreIdentity(raw);
+          if (active) setIdentity(saved);
+          if (!saved) { await SecureStore.deleteItemAsync(SESSION_KEY); await SecureStore.deleteItemAsync(PENDING_KEY); }
         }
       } catch { await SecureStore.deleteItemAsync(SESSION_KEY); }
       finally { if (active) setReady(true); }
     })();
     return () => { active = false; };
   }, []);
-  async function login(base: string, name: string, accessCode: string) {
-    const baseUrl = normalizeBaseUrl(base, __DEV__);
+  async function login(name: string, accessCode: string) {
+    const baseUrl = SERVER_URL;
     const session = await request<Omit<Identity, 'baseUrl'>>(baseUrl, null, '/api/sessions', 'POST', { name, access_code: accessCode });
     const next = { ...session, baseUrl };
     await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(next));

@@ -100,3 +100,18 @@ class Database:
             if status:
                 query = query.where(Room.status == status)
             return [copy.deepcopy(row.state) for row in db.scalars(query)]
+
+    def retire_legacy_rooms(self) -> None:
+        """No automatic bot->LLM conversion: it changes players and may incur costs."""
+        with Session(self.engine) as db, db.begin():
+            for row in db.scalars(select(Room).where(Room.status.not_in(['FINISHED', 'ARCHIVED']))):
+                state = copy.deepcopy(row.state)
+                if any(s['kind'] not in {'human', 'llm'} for s in state['seats']):
+                    state['status'] = 'ARCHIVED'
+                    state['ai_issue'] = {'code': 'LEGACY_ROOM', 'message': '旧版房间已只读归档，请创建仅含真人和 AI 玩家的新房间。'}
+                    state['lobby_version'] += 1
+                    if state['game']:
+                        state['game']['deadline_at'] = None
+                    row.state, row.status = state, 'ARCHIVED'
+                    row.revision += 1
+                    row.updated_at = time.time()

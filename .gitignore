@@ -23,3 +23,9 @@ mobile/dist/
 *.mobileprovision
 credentials.json
 .DS_Store
+
+# TLS certificates/private keys are server-local, never source files.
+certs/*
+!certs/README.md
+*.pem
+*.key

@@ -1,17 +1,15 @@
 """Independent player agents. No agent receives the authoritative room object."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import random
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
-from .rules import RuleError, timeout_action
+from .rules import RuleError
 
 SYSTEM_PROMPT = '''你是阿瓦隆的一名玩家，不是裁判。只代表自己的座位争取阵营胜利。
 所有座位编号均从 1 开始。规则由服务器执行，不能改变身份、任务、票数或胜负。
@@ -145,35 +143,11 @@ def parse_reply(raw: str, view: dict) -> dict:
     return result
 
 
-def bot_decide(view: dict) -> dict:
-    """Transparent baseline using only the same observation given to a player."""
-    menu = view['allowed_actions']
-    if not menu:
-        raise RuleError('机器人没有合法行动')
-    rng = random.Random(int(hashlib.sha256(view['request_id'].encode()).hexdigest(), 16))
-    own = view['private']
-    evil = own['alignment'] == 'EVIL'
-    known = set(own['known_evil'])
-    selected = menu[0]['id']
-    text = ''
-    phase = view['phase']
-    if phase == 'PROPOSE':
-        ranked = sorted(menu, key=lambda a: (sum(s in known for s in a['team']) if not evil else -int(own['seat'] in a['team']), rng.random()))
-        selected = ranked[0]['id']
-    elif phase in {'DISCUSS', 'FINAL_DISCUSS'}:
-        selected = 'speak'
-        team = '、'.join(map(str, view['team']))
-        text = f'当前队伍是 {team} 号。成功任务不等于全员好人，我会结合公开票型和后续任务继续判断。'
-        if phase == 'FINAL_DISCUSS':
-            text = '任务已经三次成功，但还未结束。建议回顾谁的判断超出了当时的公开证据。'
-    elif phase == 'TEAM_VOTE':
-        selected = 'reject' if not evil and known.intersection(view['team']) else 'approve'
-    elif phase == 'QUEST_PLAY':
-        selected = 'fail' if evil and (view['quest'] > 0 or rng.random() < 0.65) else 'success'
-    elif phase == 'ASSASSINATE':
-        pool = [a for a in menu if a['target'] not in known] or menu
-        selected = rng.choice(pool)['id']
-    return {'request_id': view['request_id'], 'action_id': selected, 'text': text}
+class ModelUnavailable(RuntimeError):
+    """A failed model turn, never a request to substitute a scripted player."""
+    def __init__(self, stats: dict):
+        super().__init__('AI 服务暂不可用，请稍后重试')
+        self.stats = stats
 
 
 class ModelAgent:
@@ -181,9 +155,7 @@ class ModelAgent:
         self.timeout, self.max_tokens, self.transport = timeout, max_tokens, transport
 
     async def decide(self, profile: ModelProfile, view: dict) -> tuple[dict, dict]:
-        stats = {'calls': 0, 'errors': 0, 'fallbacks': 0, 'input_tokens': 0, 'output_tokens': 0}
-        if len(view['allowed_actions']) == 1:
-            return timeout_action(view), stats
+        stats = {'calls': 0, 'errors': 0, 'input_tokens': 0, 'output_tokens': 0}
         messages = messages_for(view)
         async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport, follow_redirects=False) as client:
             for attempt in range(2):
@@ -209,5 +181,4 @@ class ModelAgent:
                     stats['errors'] += 1
                     if attempt == 0:
                         messages = messages + [{'role': 'user', 'content': '上次响应未通过协议校验。请只输出规定的三个 JSON 字段，并从原菜单选择。'}]
-        stats['fallbacks'] = 1
-        return bot_decide(view), stats
+        raise ModelUnavailable(stats)

@@ -1,37 +1,70 @@
-# 部署、接入与发布边界
+# 固定 IP 部署与升级（0.2.0）
 
-## 服务端
+## 网络与 HTTPS
 
-单进程 FastAPI 运行规则、限时与模型调度；PostgreSQL 存事务快照，Caddy 终止 TLS。部署前在 `.env` 设置随机数据库密码、随机邀请码和有效域名。示例值必须替换；密码采用随机十六进制可避免连接串转义问题。不要暴露5432或8000端口。
+目标服务器固定为 `42.193.181.239`，App 默认 API 根地址 `https://42.193.181.239`，WebSocket 自动使用同主机 `wss`。普通玩家不选择主机。此配置不证明实际端口、证书或服务已经运行。
 
-外网由邀请码限制创建访客会话，凭证30天有效；服务器只存会话token哈希，手机使用SecureStore。退出会话会丢失现有座位恢复能力，不实现密码/手机号账户找回。不要在活跃对局中退出；切后台/断网保留原凭证可以恢复。服务端重启后恢复未结束房间，逾期按房间协议处理。新版本规则状态字段变动需新增迁移/兼容代码，不能无校验读取旧不兼容状态。
+打开服务器防火墙/安全组的 443/TCP；80/TCP 用于 HTTP 跳转或由你选用的 ACME 客户端验证证书。仅 Caddy 对外暴露，数据库和 API 留在 Compose 网络。不要把数据库直接开放到公网。
 
-房间必须先加入才可读取；观战无私密角色。每席每阶段固定请求ID，响应丢失可原样重试；改变同ID内容会拒绝。HTTP提交动作，WS仅推送经过裁剪的快照，第一帧认证，URL不放token。Uvicorn默认不输出访问日志，业务日志不记录Prompt/API Key/角色面板。
+默认 `Caddyfile` **显式加载证书文件**，并为不发送 SNI 的 IP 客户端设置 `default_sni`。在服务器的 `certs/` 放入 `fullchain.pem`、`privkey.pem`，或用 `.env` 的 `TLS_CERT_DIR` 指定挂载目录。证书必须含 `IP Address:42.193.181.239` 的 SAN、未过期且可被手机系统信任。链文件和私钥不能提交 GitHub。
 
-规则机器人可离线于模型服务运行，但整个手机游戏仍依赖后端网络。安装包要求HTTPS。只有开发构建才可显式使用HTTP根地址；Android本地模拟器/真机与服务器地址不同，不应使用错误的localhost。
+Caddy 对 IP 的默认本地证书不会自动获得所有手机信任，所以本项目不依赖这一默认行为。公开 IP 证书可通过支持它的 CA/ACME 客户端签发；Let's Encrypt 已提供 IP 短期证书，管理员必须自动续期并监控失败。这里没有替用户完成证书签发，也不提供虚假的可用证书。
 
-## 模型适配
+更新文件后重新加载：
 
-设置 `LLM_BASE_URL` 为含 `/v1` 等真实API前缀的根路径，程序追加 `/chat/completions`；`LLM_MODEL` 必须是服务商账号实际可用的ID。`LLM_API_KEY` 只进服务器环境。
+```sh
+docker compose exec gateway caddy reload --config /etc/caddy/Caddyfile --force
+```
 
-多个模型可使用 `.env.example` 中 `LLM_PROFILES_JSON`，每项分别指定密钥环境变量。客户端只收到模型ID/标签；不允许玩家传入自选上游URL或密钥。模型支持JSON mode时设`json_mode:true`；部分接口需要`token_parameter:max_completion_tokens`。不能保证所有“OpenAI兼容”服务的参数完全一致，发布前必须对所选服务实测。实现不依赖模型工具调用或模型裁判。
+外部验证：`curl --fail https://42.193.181.239/healthz`。不要加 `-k` 绕过证书错误作为验收。没有有效 TLS 时修复部署，不在客户端启用任意 HTTP 或信任所有证书。
 
-每次行动最多2次上游尝试，预算保守预留2次，即使一次就成功也不退回预留额度。默认每局预留上限300，服务器并发4，单请求超时25秒，默认输出上限450token。实际费用取决于模型费率和输入长度；这里只报告调用与token统计，不编造人民币价格。模型慢于房间截止时间时，结果丢弃，按房间超时约定推进。无密钥时大模型选项不可选，不偷偷把规则机器人称为大模型。
+参考：
+- https://caddyserver.com/docs/automatic-https
+- https://caddyserver.com/docs/caddyfile/directives/tls
+- https://caddyserver.com/docs/caddyfile/options#default_sni
+- https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability/
 
-## 内测限制与上线清单
+## 配置和启动
 
-本次只适用于邀请制小规模内测。内存限流/连接配额并不是分布式安全方案；尚未做生产并发、恶意流量、长时间运行和真机网络压测。接口保存的完整服务端快照与备份含秘密身份，应限制数据库/备份访问。完整身份永不进入玩家API，结束后才公开角色。
+复制 `.env.example` 为 `.env`。为 `POSTGRES_PASSWORD`、`ACCESS_CODE` 分别生成随机值：
 
-暂不提供删房、同房重开、角色踢换、自动清理、账户恢复、语音或推送。服务器当前最多读取/处理100个进行中房间，建房也限制100个待开局房间；达到限制需管理员维护，不代表已实测支持100房并发。最近房间从最新200条筛选，展示至多30条，长期产品应换成成员表和分页查询。不能直接加worker扩容：需先实现房间归属、跨进程通知、调度去重与限流。
+```sh
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 
-CI已验证PostgreSQL 18迁移、事务和应用重启恢复。首次发布前仍需在用户服务器验证备份恢复；测试真人+API模型的5/7/10人完整局；测试锁屏、飞行模式、重复点击、退出和服务重启；检查日志无秘密；评估模型是否仍被聊天诱导（视角隔离不能保证策略抗注入）；完成费用监控和平台隐私/内容审核要求。
+密码建议十六进制以避免数据库 URL 转义问题。生产环境缺邀请码会拒绝启动。数据库卷必须备份，不要执行会删除数据的 `docker compose down -v`。
 
-## 手机安装包
+模型接口保留服务端环境配置：`LLM_BASE_URL` 是兼容接口根地址（通常含 `/v1`），客户端不填写它；`LLM_MODEL` 是提供商实际模型 ID，`LLM_API_KEY` 只在服务器。多个模型用 `LLM_PROFILES_JSON` 引用不同环境变量中的密钥；App 仅获取 profile ID/显示名称。
 
-`mobile/eas.json` 的development用于开发，preview用于内部独立APK/Ad Hoc，production用于商店发行构建。Expo账号、项目绑定、Android签名和Apple签名由仓库所有者控制，不写入源码。iOS Ad Hoc设备必须登记；TestFlight走Apple流程。本次不替用户创建付费账号、触发付费构建或声称已通过商店审核。
+```sh
+docker compose up -d --build
+docker compose logs --tail=100 api
+```
 
-来源：[Expo独立内部分发](https://docs.expo.dev/build/internal-distribution/)、[Expo开发构建](https://docs.expo.dev/develop/development-builds/introduction/)。
+PostgreSQL 18 卷挂载 `/var/lib/postgresql`；启动 API 前运行 Alembic 迁移。Uvicorn 保持 **一个 worker**：目前房间锁/调度器是单进程，不能直接横向扩容。
 
-## GitHub Android 内测 APK
+## AI 故障不再有脚本兜底
 
-`.github/workflows/android-preview.yml` 不使用EAS账号，直接在GitHub的Android环境中prebuild并编译ARM64 release变体，随后把APK、当次实际依赖锁文件和SHA256清单作为artifact保存14天。该包沿用模板公开测试签名；只用于受控内测，不作为商店发行版。正式上架和长期升级需要所有者自己的稳定私钥签名。源码修改后的工作流结果及产物均应重新检查，生成APK不等于真机对局验收。
+只可创建 `human` 和 `llm` 座位；任何旧版客户端提交 `bot` 都返回 422。没有 profile 时仍可建立全真人房间，不可创建 AI 席位。
+
+每次模型决策最多两次请求。模型错误、响应非法、超时或预算不足会暂停整间房：`status=PAUSED_AI`，保存剩余时间，保留角色/密票/阶段。暂停提示不含座位或牌值，也不含模型响应、密钥或异常堆栈。
+
+房主调用 `POST /api/rooms/{code}/ai/retry` 恢复；其他用户无权限。不会清零预算。预算耗尽时管理员调整 `LLM_CALL_BUDGET` 并重启服务，然后房主重试；配置缺失时先修复环境变量。接口不保证供应商已经恢复，仍失败则再次暂停。
+
+所有未完成请求有调度代次隔离，旧响应在暂停/恢复后不会代替新的行动；已花费调用仍计入统计。服务器重启后保留暂停状态。真人超时默认行为保持房间公示，但不会用于代替 AI。
+
+## 从 0.1.0 升级
+
+先备份：
+
+```sh
+docker compose exec -T db pg_dump -U avalon -d avalon > avalon-backup.sql
+```
+
+在维护窗口更新后端和 0.2.0 手机包。含原规则机器人席位的未结束房间自动变成只读 `ARCHIVED`，不删除历史或角色，不自动替换为收费 AI；已结束房间保留复盘。旧版其他房间可保留，但建议新开房间验证版本一致。
+
+原来其他主机保存的会话不会被转发给固定 IP；同主机凭证可恢复。不要为迁移让用户把 token 或 API Key 贴进聊天或仓库。
+
+## 验收边界
+
+CI 的模拟模型响应不是实际提供商联调；源码测试/编译不等于真机整局、TLS 部署或并发压测。当前仍为邀请制内测。语音、推送、账号找回、同房重开及公开上线的隐私流程尚未实现。

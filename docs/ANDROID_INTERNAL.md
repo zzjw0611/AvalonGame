@@ -1,3 +1,5 @@
+> **历史记录：以下为 0.1.0。0.2.0 已变更固定服务器与真人/AI 配置，旧 APK 不包含新界面。最新验证见 PR #1 与 Actions 的对应提交；不能用旧产物代替新版。**
+
 # Android 内测安装与构建
 
 核验日期：2026-09-23。源码已在 `feat/native-mobile-mvp`；[PR #1](https://github.com/zzjw0611/AvalonGame/pull/1) 未自动合并。

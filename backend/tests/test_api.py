@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app import rules
-from app.agents import ModelAgent, ModelProfile
+from app.agents import ModelAgent, ModelProfile, ModelUnavailable
+from tests.simulation import configure_mock
 from app.main import create_app
 
 
@@ -18,7 +19,7 @@ def client(tmp_path, monkeypatch):
         monkeypatch.delenv(key, raising=False)
     app = create_app(f'sqlite:///{tmp_path}/game.db', scheduler=False)
     with TestClient(app) as c:
-        c.app.state.runtime.bot_delay = 0
+        configure_mock(c.app.state.runtime)
         yield c
 
 
@@ -30,9 +31,11 @@ def guest(c, name='测试玩家'):
 
 
 def create(c, headers, n=5, humans=1, host_plays=True):
+    if humans < n:
+        configure_mock(c.app.state.runtime)
     response = c.post('/api/rooms', headers=headers, json={
         'num_players': n, 'host_plays': host_plays,
-        'seats': [{'kind': 'human' if i < humans else 'bot'} for i in range(n)],
+        'seats': [{'kind': 'human'} if i < humans else {'kind': 'llm', 'profile': 'test'} for i in range(n)],
     })
     assert response.status_code == 201, response.text
     return response.json()
@@ -123,7 +126,7 @@ def test_ws_reconnection_and_auth(client):
 
 
 @pytest.mark.parametrize('n', range(5, 11))
-def test_full_api_bot_games(client, n):
+def test_full_api_mock_llm_games(client, n):
     _, headers = guest(client)
     room = create(client, headers, n=n, humans=0, host_plays=False)
     code = room['code']
@@ -137,10 +140,11 @@ def test_full_api_bot_games(client, n):
         if state['status'] == 'FINISHED':
             assert state['game']['winner'] in {'GOOD', 'EVIL'}
             assert len(state['game']['revealed_roles']) == n
-            assert state['metrics']['calls'] == 0
+            assert state['metrics']['calls'] > 0
+            assert 'fallbacks' not in state['metrics']
             break
     else:
-        pytest.fail('bot game did not finish')
+        pytest.fail('mock LLM game did not finish')
 
 
 def test_restart_restores_roles_and_credentials(tmp_path, monkeypatch):
@@ -206,17 +210,18 @@ def test_model_adapter_repairs_then_validates():
     profile = ModelProfile('test', 'Test', 'https://model.invalid/v1', 'test-model', 'TEST_KEY_NOT_REAL')
     cmd, stats = asyncio.run(agent.decide(profile, view))
     assert cmd['action_id'] in {a['id'] for a in view['allowed_actions']}
-    assert stats['calls'] == 2 and stats['errors'] == 1 and stats['fallbacks'] == 0
+    assert stats['calls'] == 2 and stats['errors'] == 1 and 'fallbacks' not in stats
     assert stats['input_tokens'] == 20
     assert 'TEST_KEY_NOT_REAL' not in repr(profile)
     assert all('response_format' not in payload for payload in calls)
 
 
-def test_model_adapter_fallback_on_provider_failure():
+def test_model_adapter_raises_on_provider_failure():
     g = rules.create_game({'num_players': 5, 'optional_roles': [], 'speech_seconds': 60, 'action_seconds': 90})
     view = rules.observe(g, g['leader'])
     agent = ModelAgent(transport=httpx.MockTransport(lambda request: httpx.Response(503)))
     profile = ModelProfile('test', 'Test', 'https://model.invalid/v1', 'test-model', 'TEST_KEY_NOT_REAL')
-    command, stats = asyncio.run(agent.decide(profile, view))
-    assert stats['calls'] == 2 and stats['fallbacks'] == 1
-    assert command['action_id'] in {a['id'] for a in view['allowed_actions']}
+    with pytest.raises(ModelUnavailable) as error:
+        asyncio.run(agent.decide(profile, view))
+    assert error.value.stats['calls'] == 2
+    assert 'fallbacks' not in error.value.stats

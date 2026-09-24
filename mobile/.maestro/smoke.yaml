@@ -1,19 +1,22 @@
-# Run on an installed preview build with a reachable HTTPS backend.
-# maestro test -e SERVER_URL=https://... -e ACCESS_CODE=... .maestro/smoke.yaml
+# Run only on the newly installed 0.2.0 preview APK and a configured backend.
+# maestro test -e ACCESS_CODE=... .maestro/smoke.yaml
 appId: com.zzjw0611.avalongame
 ---
 - launchApp:
     clearState: true
-- assertVisible: "连接你的服务器"
-- tapOn:
-    id: "server-url"
-- inputText: ${SERVER_URL}
+- assertVisible: "进入阿瓦隆"
+- assertNotVisible: "连接你的服务器"
 - tapOn:
     id: "nickname"
 - inputText: "Mobile tester"
-- tapOn:
-    id: "access-code"
-- inputText: ${ACCESS_CODE}
+- runFlow:
+    when:
+      visible:
+        id: "access-code"
+    commands:
+      - tapOn:
+          id: "access-code"
+      - inputText: ${ACCESS_CODE}
 - hideKeyboard
 - tapOn:
     id: "login"

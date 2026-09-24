@@ -119,6 +119,13 @@ export function useRoom(identity: Identity | null, code: string) {
     catch (err) { setError((err as Error).message); }
     finally { sending.current = false; setBusy(false); }
   }
-  return { room, error, connection, busy, pending, refresh, start, send, serverOffset,
+  async function retryAI() {
+    if (!identity || sending.current) return;
+    sending.current = true; setBusy(true); setError('');
+    try { accept(await request<Room>(identity.baseUrl, identity.token, `/api/rooms/${code}/ai/retry`, 'POST')); }
+    catch (err) { setError((err as Error).message); }
+    finally { sending.current = false; setBusy(false); }
+  }
+  return { retryAI, room, error, connection, busy, pending, refresh, start, send, serverOffset,
     retry: () => pending ? send(pending.command, true) : Promise.resolve() };
 }

@@ -4,7 +4,8 @@ import random
 import pytest
 
 from app import rules as r
-from app.agents import bot_decide, messages_for, parse_reply
+from app.agents import messages_for, parse_reply
+from tests.simulation import choose_action
 
 
 def game(n=5, optional=None):
@@ -180,7 +181,7 @@ def test_three_failed_quests_ends_without_assassination():
 
 
 @pytest.mark.parametrize('n', range(5, 11))
-def test_complete_bot_games_using_authorized_views_only(n):
+def test_simulated_games_using_authorized_views_only(n):
     for seed in range(4):
         g = r.create_game({'num_players': n, 'optional_roles': ['PERCIVAL', 'MORGANA'], 'speech_seconds': 60, 'action_seconds': 90}, rng=random.Random(seed), now=0)
         steps = 0
@@ -188,7 +189,7 @@ def test_complete_bot_games_using_authorized_views_only(n):
             for seat in range(1, n + 1):
                 view = r.observe(g, seat)
                 if view['allowed_actions']:
-                    cmd = bot_decide(view)
+                    cmd = choose_action(view)
                     g = act(g, seat, cmd['action_id'], cmd['text'])
                     steps += 1
         assert g['winner'] in {'GOOD', 'EVIL'} and steps < 1000

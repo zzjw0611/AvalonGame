@@ -1,4 +1,4 @@
-export type Kind = 'human' | 'bot' | 'llm';
+export type Kind = 'human' | 'llm';
 export type Profile = { id: string; label: string };
 export type Catalog = {
   roles: Record<string, string>;
@@ -28,7 +28,8 @@ export type Game = {
 export type Room = {
   code: string; status: string; is_host: boolean; seat: number | null; lobby_version: number;
   config: { num_players: number; optional_roles: string[]; speech_seconds: number; action_seconds: number };
-  seats: { seat: number; kind: Kind; name: string; profile: string | null; occupied: boolean; is_you: boolean }[];
+  seats: { seat: number; kind: Kind | 'legacy'; name: string; profile: string | null; occupied: boolean; is_you: boolean }[];
+  ai_issue?: { code: string; message: string } | null;
   game: Game | null; metrics?: Record<string, number>;
 };
 export type RecentRoom = { code: string; status: string; num_players: number };
