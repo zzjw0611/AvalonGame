@@ -38,6 +38,20 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Select Xcode with Swift 6.2+
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' -print | sort -V | tail -1)"
+          if [ -z "$XCODE_APP" ]; then
+            echo "Xcode 26 is required by the current Expo iOS dependencies."
+            ls -1 /Applications | grep '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
       - run: npm ci --include=dev --no-audit --no-fund
 
       - name: Rebuild app icon
@@ -63,9 +77,12 @@ jobs:
             echo "No Xcode workspace generated"
             exit 1
           fi
-          SCHEME="$(xcodebuild -workspace "$WORKSPACE" -list -json | python -c 'import json,sys; d=json.load(sys.stdin); s=d.get("workspace",{}).get("schemes",[]); print(s[0] if s else "")')"
+          APP_SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          SCHEMES_JSON="$(xcodebuild -workspace "$WORKSPACE" -list -json)"
+          SCHEME="$(printf '%s' "$SCHEMES_JSON" | python -c 'import json,sys,os; d=json.load(sys.stdin); schemes=d.get("workspace",{}).get("schemes",[]); app=os.environ["APP_SCHEME"]; print(app if app in schemes else (next((s for s in schemes if s.lower()==app.lower()), "")))')"
           if [ -z "$SCHEME" ]; then
-            echo "No Xcode scheme found"
+            echo "App scheme $APP_SCHEME not found. Available schemes:"
+            printf '%s\n' "$SCHEMES_JSON"
             exit 1
           fi
           echo "Workspace: $WORKSPACE"
