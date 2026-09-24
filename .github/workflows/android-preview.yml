@@ -30,7 +30,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - run: npm install --include=dev --no-audit --no-fund
+      - run: npm ci --include=dev --no-audit --no-fund
       - run: npm run typecheck && npm test && npm run check:expo
       - name: Generate Android project
         run: npx expo prebuild --platform android --no-install
