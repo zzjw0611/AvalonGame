@@ -48,6 +48,9 @@ jobs:
           actual = subprocess.check_output(['git', 'write-tree'], text=True).strip()
           assert actual == 'cc8a27c6cd2241a0c2e9e57752e2307a4372bfdc', actual
           print('Verified exact locally tested source tree:', actual)
+          # GITHUB_TOKEN does not have workflows permission. The authorized owner
+          # connector will update/delete those files separately after this run.
+          subprocess.run(['git', 'restore', '--source=HEAD', '--staged', '--worktree', '.github/workflows'], check=True)
           PY
       - name: Commit source without overwriting concurrent changes
         id: commit
