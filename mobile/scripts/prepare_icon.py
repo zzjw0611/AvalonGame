@@ -10,7 +10,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 PARTS = ROOT / "assets" / "icon-source"
 TARGET = ROOT / "assets" / "icon.png"
-EXPECTED_SHA256 = "cf4fe07f1f2a2249c52a748abb4ecf7d6db4f38dbb7cdd38592abe419fba334e"
+EXPECTED_SHA256 = "36663b114e2e32a0568b3a1a720c0144f9432ece2a85ea042f0e0e0e573b2dcd"
 
 encoded = "".join(path.read_text(encoding="ascii").strip() for path in sorted(PARTS.glob("*.b64")))
 raw = base64.b64decode(encoded, validate=True)
