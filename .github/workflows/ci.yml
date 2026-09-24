@@ -1,0 +1,54 @@
+name: Validate source
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_TEST_URL: postgresql+psycopg://avalon:ci-only-password@127.0.0.1:5432/avalon_ci
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: avalon
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: avalon_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U avalon -d avalon_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r backend/requirements-dev.txt
+      - run: PYTHONPATH=. pytest -q
+        working-directory: backend
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --include=dev --no-audit --no-fund
+        working-directory: mobile
+      - run: npm run typecheck && npm test && npm run check:expo
+        working-directory: mobile
+      - run: npx expo export --platform android --output-dir dist/android && npx expo export --platform ios --output-dir dist/ios
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resolved-mobile-lockfile
+          path: mobile/package-lock.json

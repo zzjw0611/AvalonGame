@@ -1,0 +1,200 @@
+name: iOS signed IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feat/native-mobile-mvp']
+    paths:
+      - '.github/ios-sign-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      NODE_ENV: production
+      BUNDLE_ID: com.zzjw0611.avalongame
+      APP_VERSION: 0.2.1
+      IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Require Apple signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE_BASE64; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Select Xcode with Swift 6.2+
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' -print | sort -V | tail -1)"
+          if [ -z "$XCODE_APP" ]; then
+            echo "::error::Xcode 26 is required by the current Expo iOS dependencies."
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - run: npm ci --include=dev --no-audit --no-fund
+
+      - name: Rebuild app icon
+        run: |
+          python -m pip install --disable-pip-version-check "pillow>=11,<13"
+          python scripts/prepare_icon.py
+
+      - run: npm run typecheck && npm test && npm run check:expo
+
+      - name: Generate iOS native project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: pod install
+        working-directory: mobile/ios
+
+      - name: Install Apple certificate and provisioning profile
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/avalon-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          CERT_PATH="$RUNNER_TEMP/distribution.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+
+          python - <<'PY'
+          import base64, os
+          from pathlib import Path
+          Path(os.environ["CERT_PATH"]).write_bytes(base64.b64decode(os.environ["IOS_CERTIFICATE_P12_BASE64"], validate=True))
+          Path(os.environ["PROFILE_PATH"]).write_bytes(base64.b64decode(os.environ["IOS_PROVISIONING_PROFILE_BASE64"], validate=True))
+          PY
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -k "$KEYCHAIN" -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")"
+          TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+          APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST")"
+
+          if [ "$APP_IDENTIFIER" != "$TEAM_ID.$BUNDLE_ID" ]; then
+            echo "::error::Provisioning profile is for $APP_IDENTIFIER, expected $TEAM_ID.$BUNDLE_ID"
+            exit 1
+          fi
+
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(.*\)"/\1/p' | head -1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No valid Apple code-signing identity found in the uploaded P12."
+            exit 1
+          fi
+
+          {
+            echo "keychain=$KEYCHAIN"
+            echo "profile_name=$PROFILE_NAME"
+            echo "team_id=$TEAM_ID"
+            echo "identity=$IDENTITY"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          CERT_PATH: ${{ runner.temp }}/distribution.p12
+          PROFILE_PATH: ${{ runner.temp }}/profile.mobileprovision
+
+      - name: Archive signed iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          APP_SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          SCHEMES_JSON="$(xcodebuild -workspace "$WORKSPACE" -list -json)"
+          SCHEME="$(printf '%s' "$SCHEMES_JSON" | python -c 'import json,sys; app=sys.argv[1]; d=json.load(sys.stdin); schemes=d.get("workspace",{}).get("schemes",[]); print(app if app in schemes else (next((s for s in schemes if s.lower()==app.lower()), "")))' "$APP_SCHEME")"
+          if [ -z "$SCHEME" ]; then
+            echo "::error::App scheme $APP_SCHEME not found."
+            printf '%s\n' "$SCHEMES_JSON"
+            exit 1
+          fi
+
+          xcodebuild             -workspace "$WORKSPACE"             -scheme "$SCHEME"             -configuration Release             -destination 'generic/platform=iOS'             -archivePath build/man-avalon.xcarchive             DEVELOPMENT_TEAM="${{ steps.signing.outputs.team_id }}"             CODE_SIGN_STYLE=Manual             CODE_SIGN_IDENTITY="${{ steps.signing.outputs.identity }}"             PROVISIONING_PROFILE_SPECIFIER="${{ steps.signing.outputs.profile_name }}"             OTHER_CODE_SIGN_FLAGS="--keychain ${{ steps.signing.outputs.keychain }}"             archive
+
+      - name: Export signed Ad Hoc IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${{ steps.signing.outputs.team_id }}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>${{ steps.signing.outputs.profile_name }}</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          rm -rf build/export signed-artifact
+          mkdir -p signed-artifact
+          xcodebuild             -exportArchive             -archivePath build/man-avalon.xcarchive             -exportPath build/export             -exportOptionsPlist build/ExportOptions.plist             OTHER_CODE_SIGN_FLAGS="--keychain ${{ steps.signing.outputs.keychain }}"
+
+          IPA="$(find build/export -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [ -z "$IPA" ]; then
+            echo "::error::Signed IPA was not produced."
+            exit 1
+          fi
+          cp "$IPA" "signed-artifact/man姐想玩阿瓦隆-$APP_VERSION.ipa"
+          shasum -a 256 "signed-artifact/man姐想玩阿瓦隆-$APP_VERSION.ipa" > signed-artifact/SHA256SUMS.txt
+          printf '%s\n'             'SIGNED AD HOC iOS BUILD.'             'Installable only on devices included in the provisioning profile.'             'Apple certificate/private key and provisioning profile are supplied through GitHub Actions Secrets and are not stored in the repository.'             > signed-artifact/README.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: man-avalon-0.2.1-ios-signed-ad-hoc
+          path: |
+            mobile/signed-artifact/man姐想玩阿瓦隆-0.2.1.ipa
+            mobile/signed-artifact/SHA256SUMS.txt
+            mobile/signed-artifact/README.txt
+          if-no-files-found: error
+          retention-days: 14

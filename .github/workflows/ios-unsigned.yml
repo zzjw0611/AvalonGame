@@ -1,0 +1,119 @@
+name: iOS unsigned IPA
+
+on:
+  push:
+    branches: ['feat/native-mobile-mvp']
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/ios-unsigned.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CI: '1'
+      NODE_ENV: production
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Select Xcode with Swift 6.2+
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' -print | sort -V | tail -1)"
+          if [ -z "$XCODE_APP" ]; then
+            echo "Xcode 26 is required by the current Expo iOS dependencies."
+            ls -1 /Applications | grep '^Xcode' || true
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - run: npm ci --include=dev --no-audit --no-fund
+
+      - name: Rebuild app icon
+        run: |
+          python -m pip install --disable-pip-version-check "pillow>=11,<13"
+          python scripts/prepare_icon.py
+
+      - run: npm run typecheck && npm test && npm run check:expo
+
+      - name: Generate iOS native project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: pod install
+        working-directory: mobile/ios
+
+      - name: Build unsigned iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "No Xcode workspace generated"
+            exit 1
+          fi
+          APP_SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          SCHEMES_JSON="$(xcodebuild -workspace "$WORKSPACE" -list -json)"
+          SCHEME="$(printf '%s' "$SCHEMES_JSON" | python -c 'import json,sys; app=sys.argv[1]; d=json.load(sys.stdin); schemes=d.get("workspace",{}).get("schemes",[]); print(app if app in schemes else (next((s for s in schemes if s.lower()==app.lower()), "")))' "$APP_SCHEME")"
+          if [ -z "$SCHEME" ]; then
+            echo "App scheme $APP_SCHEME not found. Available schemes:"
+            printf '%s\n' "$SCHEMES_JSON"
+            exit 1
+          fi
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+          xcodebuild             -workspace "$WORKSPACE"             -scheme "$SCHEME"             -configuration Release             -sdk iphoneos             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             build
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
+          if [ -z "$APP" ]; then
+            echo "No Release-iphoneos .app found"
+            exit 1
+          fi
+          rm -rf unsigned-ipa
+          mkdir -p unsigned-ipa/Payload
+          cp -R "$APP" "unsigned-ipa/Payload/man姐想玩阿瓦隆.app"
+          (
+            cd unsigned-ipa
+            /usr/bin/zip -qry "man姐想玩阿瓦隆-0.2.1-unsigned.ipa" Payload
+            shasum -a 256 "man姐想玩阿瓦隆-0.2.1-unsigned.ipa" > SHA256SUMS.txt
+            printf '%s\n'               'UNSIGNED iOS BUILD. This proves native iOS compilation only.'               'It cannot be installed directly on an iPhone until it is signed with a valid Apple Developer certificate and provisioning profile.'               'Keep Apple signing certificates and private keys out of the repository.'               > README.txt
+          )
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: man-avalon-0.2.1-ios-unsigned
+          path: |
+            mobile/unsigned-ipa/man姐想玩阿瓦隆-0.2.1-unsigned.ipa
+            mobile/unsigned-ipa/SHA256SUMS.txt
+            mobile/unsigned-ipa/README.txt
+          if-no-files-found: error
+          retention-days: 14

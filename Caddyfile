@@ -1,0 +1,15 @@
+{
+    default_sni {$PUBLIC_HOST:42.193.181.239}
+}
+
+https://{$PUBLIC_HOST:42.193.181.239} {
+    tls /etc/caddy/certs/fullchain.pem /etc/caddy/certs/privkey.pem
+    request_body {
+        max_size 16KB
+    }
+    reverse_proxy api:8000
+    header {
+        Cache-Control "no-store"
+        X-Content-Type-Options "nosniff"
+    }
+}

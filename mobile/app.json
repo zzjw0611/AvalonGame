@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "man姐想玩阿瓦隆",
+    "slug": "avalon-native",
+    "scheme": "avalon",
+    "version": "0.2.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zzjw0611.avalongame",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "3"
+    },
+    "android": {
+      "package": "com.zzjw0611.avalongame",
+      "versionCode": 3
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "icon": "./assets/icon.png"
+  }
+}
