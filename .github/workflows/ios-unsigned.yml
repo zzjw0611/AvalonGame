@@ -79,7 +79,7 @@ jobs:
           fi
           APP_SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
           SCHEMES_JSON="$(xcodebuild -workspace "$WORKSPACE" -list -json)"
-          SCHEME="$(printf '%s' "$SCHEMES_JSON" | python -c 'import json,sys,os; d=json.load(sys.stdin); schemes=d.get("workspace",{}).get("schemes",[]); app=os.environ["APP_SCHEME"]; print(app if app in schemes else (next((s for s in schemes if s.lower()==app.lower()), "")))')"
+          SCHEME="$(printf '%s' "$SCHEMES_JSON" | python -c 'import json,sys; app=sys.argv[1]; d=json.load(sys.stdin); schemes=d.get("workspace",{}).get("schemes",[]); print(app if app in schemes else (next((s for s in schemes if s.lower()==app.lower()), "")))' "$APP_SCHEME")"
           if [ -z "$SCHEME" ]; then
             echo "App scheme $APP_SCHEME not found. Available schemes:"
             printf '%s\n' "$SCHEMES_JSON"
